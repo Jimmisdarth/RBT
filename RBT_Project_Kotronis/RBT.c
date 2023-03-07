@@ -1,43 +1,142 @@
 #include "RBT.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <assert.h>
 
-#define COUNT 20
+#define COUNT 15
 
-/*O Tnill kombos pou xreiazetai gia na anaparisoume ta fylla*/
-struct Node nill = { .key = 0, .color = 'B', .r = NULL, .l = NULL, .p = NULL };
-tp Tnill = &nill;
+typedef struct Node* node_pointer;
+struct Node{
+    void* key;
+    char color;     // M gia mauro R gia kokkino
+    node_pointer p; // Parent
+    node_pointer l; // Left child
+    node_pointer r; // Right child
+} Node;
 
-void print2DUtil(tp root, int space);
+struct Tree{
+    node_pointer Root;
+    node_pointer Tnill;
+};
 
-void LeftRotate(tp *x);
-void RightRotate(tp *x);
 
-void findnode(tp root, int data);
+node_pointer RBT_initialize_nill();
+node_pointer RBT_initialize_node(RedBlackTree rbt, void *new_data);
 
-void RBInsertFixUp(tp *z, tp *root);
+void RBT_print2DUtil(const node_pointer x, const node_pointer nill, int space,
+                 void (*PrintFunction)(const void *item));
 
-void RBDeleteFixUp(tp *Troot, tp x);
+node_pointer RBT_findnode(const RedBlackTree rbt, const void* data,
+                      int (*isLessThan)(const void* item1, const void* item2),
+                      int (*isEqual)(const void* item1, const void* item2));
 
-void Violation_Of_Rule_Number_3(tp root);
-void Violation_Of_Rule_Number_4(tp root);
+void RBT_LeftRotate(RedBlackTree rbt, node_pointer x);
+void RBT_RightRotate(RedBlackTree rbt, node_pointer x);
 
+void RBT_Insert_FixUp(RedBlackTree rbt, node_pointer z);
+
+void RBT_Transplant(RedBlackTree rbt, node_pointer u, node_pointer v);
+node_pointer RBT_Tree_Minimum(RedBlackTree rbt, node_pointer x);
+void RBT_RB_Delete(RedBlackTree rbt, node_pointer z);
+void RBT_Delete_Fixup(RedBlackTree rbt, node_pointer x);
+
+void RBT_CheckForViolation(const RedBlackTree rbt);
+int RBT_Calculate(const RedBlackTree rbt, node_pointer aux);
+void RBT_Violation_Of_Rule_Number_3(const RedBlackTree rbt, node_pointer root, int *error);
+int  RBT_Violation_Of_Rule_Number_4(const RedBlackTree rbt, node_pointer root);
+
+
+/**
+***  Initialize Functions
+**/
 
 /*
-//  Print Functions
-*/
+ * Epistrefei enan pointer se struct Node me orismenes arxikes times wste na
+ * oristei ws o Tnill kombos tou dentrou.
+ *
+ * Ean den kataferei na ginei to allocation tou pointer tote exoume runtime error.
+ */
+node_pointer RBT_initialize_nill(){
+    node_pointer nill_pointer = (node_pointer)malloc(sizeof(struct Node));
+    assert(nill_pointer != NULL);
 
-void print2DUtil(tp root, int space)
+    nill_pointer -> p = NULL;
+    nill_pointer -> l = NULL;
+    nill_pointer -> r = NULL;
+    nill_pointer -> key = NULL;
+    nill_pointer -> color = 'B';
+
+    return nill_pointer;
+}
+
+/*
+ * Epistrefei enan pointer se struct Node me kathorismenes arxikes times me kleidi
+ * ton pointer new_data.
+ *
+ * Ean den kataferei na ginei to allocation tou pointer tote exoume runtime error.
+ */
+node_pointer RBT_initialize_node(RedBlackTree rbt, void *new_data){
+    node_pointer new_pointer = (node_pointer)malloc(sizeof(struct Node));
+    assert(new_pointer != NULL);
+
+    new_pointer -> p = rbt -> Tnill;
+    new_pointer -> l = rbt -> Tnill;
+    new_pointer -> r = rbt -> Tnill;
+    new_pointer -> key = new_data;
+    new_pointer -> color = 'R';
+
+    return new_pointer;
+}
+
+/*
+ * Epistrefei enan pointer typou *struct Tree wste na dhmiourgeithei mia domh
+ * typou Red Black Tree.
+ *
+ * Ean den kataferei na ginei to allocation tou pointer tote exoume runtime error.
+ */
+RedBlackTree RBT_New(){
+    RedBlackTree rbt = (RedBlackTree)malloc(sizeof(struct Tree));
+    assert(rbt != NULL);
+
+    rbt -> Tnill = RBT_initialize_nill();
+    rbt -> Root = rbt -> Tnill;
+
+    return rbt;
+}
+
+/*
+ * Ean to RedBlackTree rbt den exei stoixeia tote ginetai free kai h synarthsh
+ * epistrefei th timh 1 alliws den ginetai h diagrafh kai epistrefei 0.
+ *
+ */
+int RBT_Free(RedBlackTree rbt){
+    if(RBT_isEmpty(rbt)){
+        free(rbt);
+        return 1;
+    }
+
+    return 0;
+}
+
+/**
+***  Print Functions
+**/
+
+/*
+ * Typwnei to dentro me disdiasto tropo wste na einai eukola emfanhs h domh tou.
+ */
+void RBT_print2DUtil(const node_pointer x, const node_pointer nill, int space,
+                 void (*PrintFunction)(const void *item))
 {
     // Base case
-    if (root == Tnill)
+    if (x == nill)
         return;
 
     // Increase distance between levels
     space += COUNT;
 
     // Process right child first
-    print2DUtil(root->r, space);
+    RBT_print2DUtil(x -> r, nill, space, PrintFunction);
 
     // Print current node after space
     // count
@@ -45,586 +144,533 @@ void print2DUtil(tp root, int space)
     int i;
     for (i = COUNT; i < space; i++)
         printf(" ");
-    printf("%d %c\n", root->key, root -> color);
+    PrintFunction(x -> key);
+    printf(" %c\n", x -> color);
 
     // Process left child
-    print2DUtil(root->l, space);
+    RBT_print2DUtil(x -> l, nill, space, PrintFunction);
 }
 
-// Wrapper over print2DUtil()
-void RBT_print2D(tp root)
+/*
+ * Wrapper gia thn RBT_print2DUtil() xrhsimopoeitai wste na ektypwsei to dentro pou
+ * anaparistatai apo to RedBlackTree rbt se dyo diastaseis wste na fainetai
+ * eukola h domh tou.
+ *
+ * Xreiazetai ws orisma ena deikth se synarthsh pou na mporei na typwsei to kleidi
+ * pou antistoixei sto dentro.
+ */
+void RBT_print2D(const RedBlackTree rbt, void (*PrintFunction)(const void *item))
 {
-   // Pass initial space count as 0
-   print2DUtil(root, 0);
-}
-
-/*
-//  Find Functions
-*/
-
-void findnode(tp root, int data){
-    if(root -> key == data){
-        printf("\nBrethike to kleidi %d", root -> key);
-    }
-    if(root -> key > data && root -> l != NULL){
-        findnode(root -> l, data);
-    }
-    if(root -> key < data && root -> r != NULL){
-        findnode(root -> r, data);
-    }
-}
-
-void RBT_Search(tp root, int data){
-    while(root != Tnill && root -> key != data){
-       if(root -> key > data){
-        root = root -> l;
-       }
-       else{
-        root = root -> r;
-       }
-    }
-
-    if(root != Tnill)
-        printf("\nBrethike to kleidi %d l -> key %d, r -> key %d", root -> key, root -> l -> key, root -> r -> key);
-    else
-        printf("\nTo kleidi %d den yparxei", data);
-}
-
-/*
-//  Rotation Functions
-*/
-
-void LeftRotate(tp *x){
-    if((*x) -> r != Tnill){
-        tp temp, aux;
-        aux = (*x);
-        temp = aux -> r;
-
-        aux -> r = temp -> l;
-        if(temp -> l != Tnill){
-            aux -> r -> p = aux;
-        }
-
-        temp -> p = aux -> p;
-        if(aux -> p != Tnill && aux == aux -> p -> l){ // to aux einai aristero paidi
-            aux -> p -> l = temp;
-        }
-        if(aux -> p != Tnill && aux == aux -> p -> r){ //to aux einai deji paidi
-            aux -> p -> r = temp;
-        }
-
-        temp -> l = aux;
-        aux -> p = temp;
-
-        (*x) = temp;
-
-    }
-}
-
-void RightRotate(tp *x){
-    if((*x) -> l != Tnill){
-        tp temp, aux;
-        aux = (*x);
-        temp = aux -> l;
-
-        aux -> l = temp -> r;
-        if(temp -> r != Tnill){
-            aux -> l -> p = aux;
-        }
-
-        temp -> p = aux -> p;
-
-        if(aux -> p != Tnill && aux == aux -> p -> l){ // to aux einai aristero paidi
-            aux -> p -> l = temp;
-        }
-        if(aux -> p != Tnill && aux == aux -> p -> r){ //to aux einai deji paidi
-            aux -> p -> r = temp;
-        }
-
-        temp -> r = aux;
-        aux -> p = temp;
-
-        (*x) = temp;
-    }
-}
-
-/*
-//  Insert Functions
-*/
-
-void RBInsertFixUp(tp *z, tp *root){
-
-
-    while((*z) -> p != Tnill && (*z) -> p -> color == 'R'){
-            if((*z) -> p -> color == 'R'){                                                   //ean o mpampas tou node einai kokkinos tote : (4)
-                if(((*z) -> p -> p -> r) == ((*z) -> p)){           //elegxei an o mpampas einai deji paidi
-                    if(((*z) -> p -> p -> l -> color) == 'R'){  //elegxei an o theios einai kokkinos kai oxi null (b)
-                        (*z) -> p -> color = 'B';
-                        (*z) -> p -> p -> l -> color = 'B';                                      //tote kanoume recoloring tou mpampa kai tou theiou
-
-                        if((*z) -> p -> p -> p != Tnill){                                         //elegxoume an o papous einai to root
-                            (*z) -> p -> p -> color = 'R';
-                            (*z) = (*z) -> p -> p;                                       //an den einai to janaxromatizoume
-                            //RBInsertFixUp(&(*z) -> p -> p, &(*root));
-                        }
-                    }
-                    else{
-                        if((*z) -> p -> p -> l -> color == 'B'){ //elegxei an o theios einai null h mauros (a)
-                            if((*z) == (*z) -> p -> l){                                           //elegxei an to node einai aristero paidi
-                                (*z) = (*z) -> p;                                                 //an einai kanei prwta right rotate
-
-                                //RightRotate2(&(*z), 0);
-                                RightRotate(&(*z));
-
-
-                                //kwdiko gia rightrotate
-
-                                (*z) -> color = 'B';
-                                (*z) -> p -> color = 'R';
-
-                                //LeftRotate(&(*z) -> p -> p))
-                                //kwdikos gia leftrotate tou papou gt me synarthsh den
-
-                                (*z) = (*z) -> p;
-
-                                //LeftRotate(&(*z));
-
-                                tp right = (*z)->r;
-                                (*z)->r = right->l;
-                                if ((*z)->r)
-                                    (*z)->r->p = (*z);
-                                right->p = (*z)->p;
-                                if (!((*z)->p))
-                                    (*root) = right;
-                                else if ((*z) == (*z)->p->l)
-                                    (*z)->p->l = right;
-                                else
-                                    (*z)->p->r = right;
-                                right->l = (*z);
-                                (*z)->p = right;
-                            }
-                            else{                                       //to node einai deji paidi
-                                (*z) -> p -> color = 'B';
-                                (*z) -> p -> p -> color = 'R';
-
-                                //LeftRotate(&(*z) -> p -> p))
-                                //kwdikow gia Leftrotate
-
-                                (*z) = (*z) -> p -> p;
-
-                                tp right;
-                                right = (*z) -> r;
-                                (*z)->r = right->l;
-
-                                if ((*z)->r != Tnill)
-                                    (*z)->r->p = (*z);
-                                right->p = (*z)->p;
-                                if (((*z)->p) == Tnill)
-                                    (*root) = right;
-                                else if ((*z) == (*z)->p->l)
-                                    (*z)->p->l = right;
-                                else
-                                    (*z)->p->r = right;
-                                right->l = (*z);
-                                (*z)->p = right;
-                            }
-                        }
-                    }
-                }
-                else{
-                    if((*z) -> p == (*z) -> p -> p -> l){         //elegxei an o mpampas einai aristero paidi : (4)
-                        if((*z) -> p -> p -> r -> color == 'B'){  //elegxei an o theios einai null h mauros (a)
-                            if((*z) == (*z) -> p -> r){                                          //elegxei an to node einai deji paidi
-                                (*z) = (*z) -> p;
-
-                                LeftRotate(&(*z));
-                                //kwdikos gia leftrotate
-
-                                (*z) -> color = 'B';
-                                (*z) -> p -> color = 'R';
-
-                                //RightRotate(&((*z) -> p -> p))
-                                //kwdikos gia RR tou papou giati me synarthsh ta ekane mantara
-
-                                (*z) = (*z) -> p;
-
-                                tp left = (*z)->l;
-                                (*z)->l = left->r;
-
-                                if ((*z)->l)
-                                    (*z)->l->p = (*z);
-
-                                left->p = (*z)->p;
-
-                                if (!((*z)->p))
-                                    (*root) = left;
-                                else if ((*z) == (*z)->p->l)
-                                    (*z)->p->l = left;
-                                else
-                                    (*z)->p->r = left;
-                                left->r = (*z);
-                                (*z)->p = left;
-                            }
-                            else{                                                                   //an einai aristero paidi
-                                (*z) -> p -> color = 'B';
-                                (*z) -> p -> p -> color = 'R';
-
-                                //RightRotate2(&((*z) -> p -> p), 1);
-                                (*z) = (*z) -> p -> p;                     //mporei kai kodikos gia RR
-
-                                tp left = (*z)->l;
-                                (*z)->l = left->r;
-                                if ((*z)->l != Tnill)
-                                    (*z)->l->p = (*z);
-                                left->p = (*z)->p;
-                                if (((*z)->p) == Tnill)
-                                    (*root) = left;
-                                else if ((*z) == (*z)->p->l)
-                                    (*z)->p->l = left;
-                                else
-                                    (*z)->p->r = left;
-                                left->r = (*z);
-                                (*z)->p = left;
-                            }
-
-                        }
-                        else{
-                            if(((*z) -> p -> p -> r -> color) == 'R'){  //elegxei an o theios einai kokkinos kai oxi null (b)
-                                (*z) -> p -> color = 'B';
-                                (*z) -> p -> p -> r -> color = 'B';                                      //tote kanoume recoloring tou mpampa kai tou theiou
-
-                                if((*z) -> p -> p -> p != Tnill){                                         //elegxoume an o papous einai to root
-                                    (*z) -> p -> p -> color = 'R';
-                                    (*z) = (*z) -> p -> p;                                               //an den einai to janaxromatizoume
-                                    //RBInsertFixUp(&(*z) -> p -> p, &(*root));
-                                }
-                            }
-                        }
-                    }
-
-                }
-            }
-    }
-    if((*z) -> p == Tnill){    //an to node einai to root tote balto mauro (1)
-        (*z) -> color = 'B';
-    }
-}
-
-void RBT_Insert(tp *root, int data){ // isnertion me while loops
-    tp y, x, temp;
-    y = Tnill;
-    x = (*root);
-
-    while(x != Tnill){
-        y = x;
-        if(data < x -> key){
-            x = x -> l;
-        }
-        else{
-            x = x -> r;
-        }
-    }
-
-    temp = (tp)malloc(sizeof(struct Node));
-    temp -> l = temp -> r = Tnill;
-    temp -> p = y;
-    temp -> key = data;
-    temp -> color = 'R';
-
-    if(y == Tnill){//to dentro einai keno
-        temp -> l = temp -> r =(*root);
-        (*root) = temp;
+    if(!RBT_isEmpty(rbt)){
+        // Pass initial space count as 0
+        RBT_print2DUtil(rbt -> Root, rbt -> Tnill, 0, PrintFunction);
     }
     else{
-        if(data < y -> key && y -> l == Tnill){
-            temp -> l = temp -> r = y -> l;
-            y -> l = temp;
-        }
-        if(data > y -> key && y -> r == Tnill){
-            temp -> l = temp -> r = y -> r;
-            y -> r = temp;
-        }
+        printf("\nTo dentro den exei stoixeia\n");
     }
 
-    RBInsertFixUp(&temp, &(*root));
+}
 
-    //Tsekarei an exoun ginei parabiaseis otan teleiwsei me ta fixup
-    //Violation_Of_Rule_Number_3(*root);
-    //Violation_Of_Rule_Number_4(*root);
+/**
+***  Find Functions
+**/
+
+/*
+ * Epistrefei enan deikth pou theixnei sto kombou tou dentrou pou exei kleidi iso
+ * me auto pou antistoixei sto (void *data).
+ *
+ * Ean den brethei to kleidi tote epistrefei to Tnill.
+ */
+node_pointer RBT_findnode(const RedBlackTree rbt, const void* data,
+                      int (*isLessThan)(const void* item1, const void* item2),
+                      int (*isEqual)(const void* item1, const void* item2))
+{
+    node_pointer x = rbt -> Root;
+
+    while(x != rbt -> Tnill && (!isEqual(x -> key, data))){
+       if(isLessThan(data, x -> key)){
+        x = x -> l;
+       }
+       else{
+        x = x -> r;
+       }
+    }
+
+    return x;
 }
 
 /*
-//  Delete Functions
-*/
+ * Anazhta sto RedBlackTree rbt to kleidi pou antistoixei ston deikth void* data.
+ *
+ * Dexetai ws orisma deikth se synarthsh (*isLessThan) opou epistrefei 1 ean to
+ * to kleidi pou antistoixei sto *item1 > kleidi *item2 alliws epistrefei 0.
+ *
+ * Dexetai ws orisma deikth se synarthsh (*isEqual) opou epistrefei 1 ean to
+ * to kleidi pou antistoixei sto *item1 == kleidi *item2 alliws epistrefei 0.
+ *
+ * Ean brethei to kleidi epistrefei 1 alliws epistrefei th timh 0.
+ */
+int RBT_Search(const RedBlackTree rbt, const void* data,
+                int (*isLessThan)(const void* item1, const void* item2),
+                int (*isEqual)(const void* item1, const void* item2))
+{
+    node_pointer x = rbt -> Root;
 
-void RBDeleteFixUp(tp *Troot, tp x){
+    while(x != rbt -> Tnill && (!isEqual(x -> key, data))){
+       if(isLessThan(data, x -> key)){
+        x = x -> l;
+       }
+       else{
+        x = x -> r;
+       }
+    }
 
-    //print2D(x);
+    if(x != rbt -> Tnill)
+        return 1;
+    else
+        return 0;
+}
 
-    int T = 0; //tha thesoume auto iso me to 1 otan the exoume teleiwsei me to case 4
+/**
+***  Rotation Functions
+**/
 
-    while(T != 1 && (x) -> color == 'B' && (x) != (*Troot)){
-            if((x) == (x) -> p -> l){             //to x einai aristero paidi
-                tp w = (x) -> p -> r;              //w o aderfos tou x
-                if(w -> color == 'R'){              //to einai kokkino
-                    (x) -> p -> r -> color = 'B';
-                    (x) -> p -> color = 'R';
-                    if(x -> p == (*Troot)){
-                        LeftRotate(&((x) -> p));
-                        (*Troot) = w;
+/*
+ * Tropopoiei to dentro RedBlackTree rbt ektelontas ena left rotation gyro
+ * apo th syndesh toy x kai tou deji paidiou tou (x -> r).
+ *
+ * Pio analytika kai me eikones : page 312 Introduction to Algorithms 3rd Edition.
+ */
+void RBT_LeftRotate(RedBlackTree rbt, node_pointer x){
+    node_pointer y = x -> r;    //arxikopoioume to y
+    x -> r = y -> l;            //to aristero ypodentro toy y ginetai to deji ypodentro tou x
 
-                        (*Troot) -> l -> l -> p = (*Troot) -> l;
-                        x = (*Troot) -> l -> l;
+    if(y -> l != rbt -> Tnill)
+        y -> l -> p = x;
 
-                        w = (x) -> p -> r;
+    y -> p = x -> p;    //syndeoume to p tou x sto y
+
+    if(x -> p == rbt -> Tnill)
+        rbt -> Root = y;
+    else if(x == x -> p -> l)
+        x -> p -> l = y;
+    else
+        x -> p -> r = y;
+
+    y -> l = x;     //bazoume to x sta aristera tou y
+    x -> p = y;
+}
+
+/*
+ * Tropopoiei to dentro RedBlackTree rbt ektelontas ena right rotation gyro
+ * apo th syndesh toy x kai tou aristerou paidiou tou (x -> l).
+ *
+ * Pio analytika kai me eikones : page 312 Introduction to Algorithms 3rd Edition.
+ */
+void RBT_RightRotate(RedBlackTree rbt, node_pointer x){
+    node_pointer y = x -> l;    //arxikopoioume to y
+    x -> l = y -> r;            //to deji ypodentro toy y ginetai to aristero ypodentro tou x
+
+    if(y -> r != rbt -> Tnill)
+        y -> r -> p = x;
+
+    y -> p = x -> p;    //syndeoume to p tou x sto y
+
+    if(x -> p == rbt -> Tnill)
+        rbt -> Root = y;
+    else if(x == x -> p -> r)
+        x -> p -> r = y;
+    else
+        x -> p -> l = y;
+
+    y -> r = x;     //bazoume to x sta dejia tou y
+    x -> p = y;
+}
+
+/**
+***  Insert Functions
+**/
+
+/*
+ * Eisagei sto dentro RedBlackTree rbt ena neo stoixeio me kleidi pou antistoixei
+ * sto void *data_to_insert.
+ *
+ * Dexetai ws orisma deikth se synarthsh (*isLessThan) opou epistrefei 1 ean to
+ * to kleidi pou antistoixei sto *item1 > kleidi *item2 alliws epistrefei 0.
+ *
+ * Ean to rbt einai NULL tote exoume runtime error.
+ *
+ * Ean meta thn eisagwgh tou stoixeiou yparxoun parabiaseis stis idiotites ths
+ * domh tou rbt tote exoume runtime error.
+ */
+void RBT_Insert(RedBlackTree rbt, void* data_to_insert,
+                int (*isLessThan)(const void* item1, const void* item2))
+{ // isnertion me while loops
+
+    assert(rbt != NULL);
+
+    node_pointer z = RBT_initialize_node(rbt, data_to_insert);
+
+    node_pointer y = rbt -> Tnill;
+    node_pointer x = rbt -> Root;
+
+    while(x != rbt -> Tnill){
+        y = x;
+        if(isLessThan(z -> key, x -> key))
+            x = x -> l;
+        else
+            x = x -> r;
+    }
+
+    z -> p = y;
+
+    if(y == rbt -> Tnill)
+        rbt -> Root = z;
+    else if(isLessThan(z -> key, y -> key))
+        y -> l = z;
+    else
+        y -> r = z;
+
+    RBT_Insert_FixUp(rbt, z);
+
+    RBT_CheckForViolation(rbt);
+}
+
+/*
+ * Kaleitai sto telos ths RBT_Insert wste na diorthosei tyxon parabiaseis stis
+ * idiotites ths domhs tou dentrou pou mporei na exoun dhmiourghthei.
+ *
+ * page 308 Introduction to Algorithms 3rd Edition Properties of Red Black Tree.
+ */
+void RBT_Insert_FixUp(RedBlackTree rbt, node_pointer z){
+    node_pointer y;
+    while(z -> p -> color == 'R'){
+        if(z -> p ==  z -> p -> p -> l){
+            y = z -> p -> p -> r;
+
+            if(y -> color == 'R'){  //case 1
+                z -> p -> color = 'B';
+                y -> color = 'B';
+
+                z -> p -> p -> color = 'R';
+                z = z -> p -> p;
+            }
+            else{
+                if(z == z -> p -> r){   //case 2
+                    z = z -> p;
+                    RBT_LeftRotate(rbt, z);
                     }
-                    else{
-                        LeftRotate(&((x) -> p));
 
-                        x -> p = w -> l;
+                z -> p -> color = 'B';  //case 3
+                z -> p -> p -> color = 'R';
+                RBT_RightRotate(rbt, z -> p -> p);
+            }
+        }
+        else{
+            y = z -> p -> p -> l;
 
-                        w = (x) -> p -> r;
-                    }
+            if(y -> color == 'R'){
+                z -> p -> color = 'B';
+                y -> color = 'B';
+
+                z -> p -> p -> color = 'R';
+                z = z -> p -> p;
+            }
+            else{
+                if(z == z -> p -> l){
+                    z = z -> p;
+                    RBT_RightRotate(rbt, z);
                 }
-                if((w-> l -> color == 'B') && (w-> r -> color == 'B')){    //to w exei dyo maura paidia
-                    (x) -> p -> r -> color = 'R';
-                    (x) = (x) -> p;
-                }
-                else if (w -> r -> color == 'B' && w -> l -> color == 'R'){  //to exei mauro to deji paidi kai kokkino to aristero
-                    x -> p -> r -> l -> color ='B';
 
-                    x -> p -> r -> color = 'R';
+                z -> p -> color = 'B';
+                z -> p -> p -> color = 'R';
+                RBT_LeftRotate(rbt, z -> p -> p);
+            }
+        }
+    }
 
-                    RightRotate(&(x -> p -> r));             //RightRotate(&(x -> p -> r));
+    rbt -> Root -> color = 'B';
+}
 
+/**
+***  Delete Functions
+**/
+
+/*
+ * Antikathista to ypodentro sto kombo u me to ypodentro stho kombo v analoga
+ * me th thesh pou exei to u sto dentro rbt.
+ */
+void RBT_Transplant(RedBlackTree rbt, node_pointer u, node_pointer v){
+    if(u -> p == rbt -> Tnill)
+        rbt -> Root = v;
+    else if(u == u -> p -> l)
+        u -> p -> l = v;
+    else
+        u -> p -> r = v;
+    v -> p = u -> p;
+}
+
+/*
+ * Epistrefei enan deikth sto kombo me to mikrotero kleidi sto ypodentro tou x.
+ */
+node_pointer RBT_Tree_Minimum(RedBlackTree rbt, node_pointer x){
+    while(x -> l != rbt -> Tnill)
+        x = x -> l;
+
+    return x;
+}
+
+/*
+ * Diagrafei ton KOMBO tou rbt me kleidi pou antistoixei sto *data_to_delete
+ * kai den diagrafei to idio to kleidi.
+ *
+ * Dexetai ws orisma deikth se synarthsh (*isLessThan) opou epistrefei 1 ean to
+ * to kleidi pou antistoixei sto *item1 > kleidi *item2 alliws epistrefei 0.
+ *
+ * Dexetai ws orisma deikth se synarthsh (*isEqual) opou epistrefei 1 ean to
+ * to kleidi pou antistoixei sto *item1 == kleidi *item2 alliws epistrefei 0.
+ *
+ * An de brethei o kombos tote the ginetai h diagrafh kai epistrefei th timh 0
+ * Alliws ekteleitai h diagrafh kai epistrefei 1.
+ *
+ * Ean meta th diagrafh exei ginei kapoia parabiash stis idiothtes sth domh tou
+ * rbt tote exoume runtime error.
+ */
+int RBT_Delete(RedBlackTree rbt, void *data_to_delete,
+               int (*isLessThan)(const void* item1, const void* item2),
+               int (*isEqual)(const void* item1, const void* item2))
+{
+    node_pointer z = RBT_findnode(rbt, data_to_delete, isLessThan, isEqual);
+
+    if(z != rbt -> Tnill){
+        RBT_RB_Delete(rbt, z);
+        free(z);
+        rbt -> Tnill -> p = NULL;
+
+        RBT_CheckForViolation(rbt);
+        return 1;
+    }
+    else
+        return 0;
+}
+
+/*
+ * Afairei to kombo z apo to dentro rbt ALLA DEN TO DIAGRAFEI kai epeita kalei thn
+ * RBT_RB_Delete_Fixup wste na diorthosei tis parabiaseis pou mporei na ginoun
+ * ean o kombos z pou afairethike eixe mauro xrwma ('B').
+ */
+void RBT_RB_Delete(RedBlackTree rbt, node_pointer z){
+    node_pointer x;
+
+    node_pointer y = z;
+    char y_original_color = y -> color;
+
+    if(z -> l == rbt -> Tnill){ //to aristero paidi einai nill
+        x = z -> r;
+        RBT_Transplant(rbt, z, z -> r);
+    }
+    else if(z -> r == rbt -> Tnill){    //to deji paidi einai nill **Mporei na exoume kai diagrafei fyloy edw
+        x = z -> l;
+        RBT_Transplant(rbt, z, z -> l);
+    }
+    else{   //to node exei dyo paidia
+        y = RBT_Tree_Minimum(rbt, z -> r);
+        y_original_color = y -> color;
+        x = y -> r;
+
+        if(y -> p == z){
+            x -> p = y;
+        }
+        else{
+            RBT_Transplant(rbt, y, y -> r);
+            y -> r = z -> r;
+            y -> r -> p = y;
+        }
+
+        RBT_Transplant(rbt, z, y);
+
+        y -> l = z -> l;
+        y -> l -> p = y;
+        y -> color = z -> color;
+    }
+
+    if(y_original_color == 'B')
+        RBT_Delete_Fixup(rbt, x);
+}
+
+/*
+ * Diorthonei tis parabiaseis pou mporei na dhmiourgithkan sto rbt kata thn
+ * afairesh enos kombou sthn yproutina RBT_RB_Delete.
+ */
+void RBT_Delete_Fixup(RedBlackTree rbt, node_pointer x){
+    node_pointer w;
+
+    while(x != rbt -> Root && x -> color == 'B'){
+        if(x == x -> p -> l){   //to x einai aristero paidi
+            w = x -> p -> r;
+
+            if(w -> color == 'R'){  //case 1
+                w -> color = 'B';
+                x -> p -> color = 'R';
+
+                RBT_LeftRotate(rbt, x -> p);
+                w = x -> p -> r;
+            }
+            if(w -> l -> color == 'B' && w -> r -> color == 'B'){   //case 2
+                w -> color = 'R';
+                x = x -> p;
+            }
+            else{
+                if(w -> r -> color == 'B'){ //case 3
+                    w -> l -> color = 'B';
+                    w -> color = 'R';
+
+                    RBT_RightRotate(rbt, w);
                     w = x -> p -> r;
                 }
-                if(w -> color == 'B' && w -> r -> color == 'R'){            //to w einai mauro kai exei kokkino deji paidi
-                    x -> p -> r -> color = x -> p -> color;
-                    x -> p -> color = 'B';
 
-
-                    x -> p -> r -> r -> color = 'B';
-
-                if(x -> p == (*Troot)){
-                        LeftRotate(&((x) -> p));
-                        (*Troot) = w;
-
-                        T = 1;
-                    }
-                    else{
-                        LeftRotate(&((x) -> p));
-
-                        T = 1;
-                    }
-                }
+                w -> color = x -> p -> color;   //case 4
+                x -> p -> color = 'B';
+                w -> r -> color = 'B';
+                RBT_LeftRotate(rbt, x -> p);
+                x = rbt -> Root;
             }
-            else{                                  //to x einai deji paidi
-                tp w = (x) -> p -> l;              //w o aderfos tou x
-                if(w -> color == 'R'){                  //to w einai kokkino
-                    (x) -> p -> l -> color = 'B';
-                    (x) -> p -> color = 'R';
+        }
+        else{   //to x einai deji paidi
+            w = x -> p -> l;
 
-                    if(x -> p == (*Troot)){
-                        RightRotate(&((x) -> p));
-                        (*Troot) = w;
+            if(w -> color == 'R'){  //case 1
+                w -> color = 'B';
+                x -> p -> color = 'R';
 
-                        (*Troot) -> r -> r -> p = (*Troot) -> r;
-                        x = (*Troot) -> r -> r;
+                RBT_RightRotate(rbt, x -> p);
+                w = x -> p -> l;
+            }
+            if(w -> r -> color == 'B' && w -> l -> color == 'B'){   //case 2
+                w -> color = 'R';
+                x = x -> p;
+            }
+            else{
+                if(w -> l -> color == 'B'){ //case 3
+                    w -> r -> color = 'B';
+                    w -> color = 'R';
 
-                        w = (x) -> p -> l;
-
-                    }
-                    else{
-                        RightRotate(&((x) -> p));
-
-                        x -> p = w -> r;
-
-                        w = (x) -> p -> l;
-                    }
-                }
-                if((w -> l -> color == 'B') && (w -> r -> color == 'B')){   //to w exei dyo maura paidia
-                    (x) -> p -> l -> color = 'R';
-                    (x) = (x) -> p;
-                }
-                else if (w -> l -> color == 'B' && w -> r -> color == 'R'){
-                    x -> p -> l -> r -> color ='B';
-
-                    x -> p -> l -> color = 'R';
-
-                    LeftRotate(&(x -> p -> l));             //RightRotate(&(x -> p -> r));
+                    RBT_LeftRotate(rbt, w);
                     w = x -> p -> l;
                 }
-                if(w -> color == 'B' && w -> l -> color == 'R'){
-                x -> p -> l -> color = x -> p -> color;
+
+                w -> color = x -> p -> color;   //case 4
                 x -> p -> color = 'B';
-
-                x -> p -> l -> l -> color = 'B';
-
-                if(x -> p == (*Troot)){
-                        RightRotate(&((x) -> p));
-                        (*Troot) = w;
-
-                        T = 1;
-                    }
-                    else{
-                        RightRotate(&((x) -> p));
-
-                        T = 1;
-                    }
-                }
+                w -> l -> color = 'B';
+                RBT_RightRotate(rbt, x -> p);
+                x = rbt -> Root;
             }
+        }
     }
-    (x) -> color = 'B';
+
+    x -> color = 'B';
 }
 
-void RBT_Delete(tp *Treeroot, tp *root, int data){
-    if((*root) != Tnill && ((*root) -> key) > data){
-        RBT_Delete(&(*Treeroot), &(*root) -> l, data);
-    }
-    if((*root) != Tnill && ((*root) -> key) < data){
-        RBT_Delete(&(*Treeroot), &(*root) -> r, data);
-    }
-    if((*root) == Tnill){
-        printf("\nTo dentro einai keno...");
-    }
-    if((*root) != Tnill && ((*root) -> key) == data){
+/**
+***  Violation Functions
+**/
 
-        tp y;
-        y = (*root);
+/*
+ * Elegxei ean exoun ginei parabiaseis ths idiothtas 3 kai 4 enos Red Black Tree
+ * gia to dentro rbt. https://en.wikipedia.org/wiki/Red%E2%80%93black_tree
+ * (Properties).
+ *
+ * Ean exei ginei parabiash se estw kai mia idiothta tote exoume runtime error.
+ */
+void RBT_CheckForViolation(const RedBlackTree rbt){
+    //Tsekarei an exoun ginei parabiaseis
 
-        char Ysoriginalcolor = y -> color;
+    if(!RBT_isEmpty(rbt)){
+        int error1 = 0;
+        RBT_Violation_Of_Rule_Number_3(rbt, rbt -> Root, &error1);
+        assert(error1 == 0);
 
-        if((*root) -> l == Tnill && (*root) -> r == Tnill){ // diagrafh fyllou
-            //printf("\nLEAF");
-            tp temp = (*root);
-
-            (*root) -> l -> p = (*root) -> p;
-            (*root) = (*root) -> l;
-
-            free(temp);
-            (temp) = NULL;
-
-            if(Ysoriginalcolor == 'B'){
-                RBDeleteFixUp(&(*Treeroot), (*root));
-            }
-        }
-        if((*root) != Tnill && (*root) -> l != Tnill && (*root) -> r == Tnill){ // diagrafh kombou me aristero paidi
-            //printf("\nARISTERO");
-            tp temp;
-            temp = (*root);
-
-            (*root) -> l -> p = (*root) -> p;
-            (*root) = (*root) -> l;
-            free(temp);
-            temp = NULL;
-
-            if(Ysoriginalcolor == 'B'){
-                RBDeleteFixUp(&(*Treeroot), (*root));
-            }
-        }
-        if((*root) != Tnill && ((*root) -> key) == data && (*root) -> r != Tnill && (*root) -> l == Tnill){ // diagrafh kombou me deji paidi
-            //printf("\nDEJI");
-            tp temp;
-            temp = (*root);
-
-            (*root) -> r -> p = (*root) -> p;
-            (*root) = (*root) -> r;
-            free(temp);
-            temp = NULL;
-
-            if(Ysoriginalcolor == 'B'){
-                RBDeleteFixUp(&(*Treeroot), (*root));
-            }
-        }
-        if((*root) != Tnill && ((*root) -> key) == data && (*root) -> l != Tnill && (*root) -> r != Tnill){ // diagrafh komvou me 2 paidia
-            //printf("\n2PAIDIA");
-            tp aux;
-            aux = (*root) -> r;
-
-            while(aux -> l != Tnill){
-                aux = aux -> l;
-            }
-            int keytorestore;
-            keytorestore = aux -> key;
-            Ysoriginalcolor = aux -> color;
-
-            if(aux -> r != Tnill){
-                aux -> r -> p = aux -> p;
-            }
-
-            //printf("\nkey = %d", aux -> key);
-
-            (*root) -> key = keytorestore;
-            RBT_Delete(&(*Treeroot), &((*root) -> r), keytorestore);
-
-            aux = NULL;
-        }
+        int error2 = RBT_Violation_Of_Rule_Number_4(rbt, rbt -> Root);
+        assert(error2 == 0);
     }
 }
 
 /*
-//  Violation Functions
-*/
-
-
-int Calculate(tp aux){
-    if(aux == Tnill){
+ * Ypologizei posa black nodes yparxoyn sto aristero kai sto deji paidi tou aux
+ *
+ * Ean exoume ton idio arithmo se black nodes kai stis dyo pleures tote episttrefei
+ * ton arithmo twn black nodes.
+ * Eidalws epistrefei to megalytero arithmo apo tous dyo.
+ */
+int RBT_Calculate(const RedBlackTree rbt, node_pointer aux){
+    if(aux == rbt -> Tnill){
         return 0;
     }
     else{
-        int assert_r = 0, assert_l = 0;
+        int check_right = 0, check_left = 0;
+        int adder = 0;
 
-        if(aux -> color == 'R'){
-            assert_l = Calculate(aux -> l);
-            assert_r = Calculate(aux ->r);
+        if(aux -> color == 'B')
+            adder = 1;
 
-            if(assert_l == assert_r){
-                return assert_l;
-            }
-            else{
-                printf("\nParabiash kanona 4 sto kombo %d, l = %d, r = %d", aux -> key, assert_l, assert_r);
-                return -100;
-            }
-        }
-        else if(aux -> color == 'B'){
-            assert_l = 1 + Calculate(aux -> l);
-            assert_r = 1 + Calculate(aux ->r);
+        check_left  = adder + RBT_Calculate(rbt, aux -> l);
+        check_right = adder + RBT_Calculate(rbt, aux -> r);
 
-            if(assert_l == assert_r){
-                return assert_l;
-            }
-            else{
-                printf("\nParabiash kanona 4 sto kombo %d, l = %d, r = %d", aux -> key, assert_l, assert_r);
-                return -100;
-            }
-        }
-        else{
-            return -25431;
-        }
+        if(check_left == check_right)
+            return check_left;
+        else if(check_left > check_right)
+            return check_right;
+        else
+            return check_left;
     }
 }
 
-void Violation_Of_Rule_Number_3(tp root){
-    if(root != Tnill){
-        Violation_Of_Rule_Number_3(root -> l);
+/*
+ * Elegxei olo to rbt gia to ean exei ginei parabiash tis idiothtas 3, dhladh oti
+ * den mporei na yparxei Red kombos me Red paidia.
+ *
+ * Kathe fora pou ginetai parabiash tou kanona tote aujanetai h timh pou deixnei
+ * o deikths *error kai wste na antilifthei o caller oti yparxei parabiash.
+ */
+void RBT_Violation_Of_Rule_Number_3(const RedBlackTree rbt, node_pointer root, int *error){
+    if(root != rbt -> Tnill){
+        RBT_Violation_Of_Rule_Number_3(rbt, root -> l, error);
 
         if(root -> color == 'R' && (root -> l -> color == 'R' || root -> r -> color == 'R'))
-            printf("\nPARABIASH KANONA 3 STO KOMBO %d", root -> key);
+            ++(*error);
 
-
-        Violation_Of_Rule_Number_3(root -> r);
+        RBT_Violation_Of_Rule_Number_3(rbt, root -> r, error);
     }
 }
 
-void Violation_Of_Rule_Number_4(tp root){
+/*
+ * Elegxei ean sto Root tou rbt yparxei o idios arithmos Black kombwn toso sto
+ * deji oso kai sto aristero paidi (Property 4) kalwntas thn yporoutina Calculate.
+ *
+ * Ean ginei parabiash epistrefei th timh 1 alliws epistrefei th timh 0.
+ */
+int RBT_Violation_Of_Rule_Number_4(const RedBlackTree rbt, node_pointer root){
+    int error = 0;
     int number_of_black_nodes_in_r = 0, number_of_black_nodes_in_l = 0;
 
-    number_of_black_nodes_in_r = Calculate(root -> r);
-    number_of_black_nodes_in_l = Calculate(root -> l);
+    number_of_black_nodes_in_r = RBT_Calculate(rbt, root -> r);
+    number_of_black_nodes_in_l = RBT_Calculate(rbt, root -> l);
 
     if(number_of_black_nodes_in_l != number_of_black_nodes_in_r)
-        printf("\nPARABIASH KANONA 4");
-    else
-        printf("\nl value %d, r value %d", number_of_black_nodes_in_l, number_of_black_nodes_in_r);
+        error = 1;
+
+    return error;
+}
+
+
+/**
+***  Bool Fucntions
+**/
+
+/*
+ * Epistrefei th time 0 ean to rbt den exei stoixeia kai th timh 1
+ * Ean auto den einai adeio.
+ */
+int RBT_isEmpty(const RedBlackTree rbt){
+    return (rbt -> Root == rbt -> Tnill);
 }
