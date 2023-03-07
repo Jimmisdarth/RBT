@@ -1,8 +1,0 @@
-# depslib dependency file v1.0
-1673624479 source:c:\users\jimis\onedrive\desktop\c\rbt_project_kotronis\rbt.c
-	"RBT.h"
-	<stdio.h>
-	<stdlib.h>
-
-1673624492 c:\users\jimis\onedrive\desktop\c\rbt_project_kotronis\rbt.h
-
